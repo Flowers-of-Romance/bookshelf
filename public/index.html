@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.json">
+<title>本棚</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: #f4f2ee; color: #222; padding-bottom: 96px;
+  }
+  header {
+    background: #1a1a2e; color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 18px; flex: 1; }
+  header .count { font-size: 13px; opacity: .7; }
+  .viewtoggle { display: flex; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; overflow: hidden; }
+  .viewtoggle button { background: none; border: none; color: #fff; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .viewtoggle button.active { background: #e94560; }
+
+  .toolbar { padding: 10px 16px; display: flex; gap: 8px; align-items: center; }
+  .toolbar input[type=search] {
+    flex: 1; padding: 9px 14px; border: 1px solid #ddd; border-radius: 22px;
+    font-size: 15px; background: #fff; outline: none; min-width: 0;
+  }
+  .toolbar select { padding: 9px 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; background: #fff; }
+  .toolbar button { padding: 9px 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 13px; background: #fff; cursor: pointer; white-space: nowrap; }
+
+  /* ---- 本棚ビュー ---- */
+  #shelves { padding: 0 12px; display: flex; flex-direction: column; gap: 20px; }
+  .shelf {
+    background: linear-gradient(#a9805a, #8f6a4a);
+    border: 6px solid #7a5433; border-bottom-width: 10px;
+    border-radius: 8px; box-shadow: 0 3px 8px rgba(0,0,0,.22);
+  }
+  .shelf-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+  .shelf-head .grip { cursor: grab; opacity: .75; padding: 0 2px; }
+  .shelf-head .name { font-size: 15px; font-weight: 700; cursor: pointer; flex: 1; }
+  .shelf-head .n { font-size: 12px; opacity: .85; }
+  .shelf-head button {
+    border: none; background: rgba(0,0,0,.18); color: #fff; border-radius: 6px;
+    font-size: 12px; padding: 4px 8px; cursor: pointer;
+  }
+
+  .row { border-top: 3px solid rgba(0,0,0,.15); }
+  .row-head {
+    display: flex; align-items: center; gap: 6px; padding: 4px 10px 0;
+    color: rgba(255,255,255,.9); font-size: 11.5px; text-shadow: 0 1px 1px rgba(0,0,0,.3);
+  }
+  .row-head .rgrip { cursor: grab; opacity: .7; }
+  .row-head .rname { cursor: pointer; }
+  .row-head .delrow { border: none; background: none; color: rgba(255,255,255,.6); cursor: pointer; font-size: 12px; padding: 0 4px; }
+  .row-head .rowdims { border: none; background: none; cursor: pointer; font-size: 13px; padding: 0 4px; }
+  .row-head .rdims, .row-head .fit { font-size: 10.5px; opacity: .95; background: rgba(0,0,0,.18); border-radius: 8px; padding: 1px 7px; }
+  .row-head .fit.over { background: #c0234a; font-weight: 700; opacity: 1; }
+  .book.toobig img, .book.toobig .fakecover, .book.toobig .rspine { outline: 2px solid #ff5252; outline-offset: -2px; }
+
+  /* 背表紙モード: 幅=厚みの実寸比 */
+  .rspine {
+    position: relative; z-index: 1;
+    writing-mode: vertical-rl; overflow: hidden;
+    color: #fff; font-weight: 600;
+    text-shadow: 0 0 2px rgba(0,0,0,.55);
+    padding: 6px 0; border-radius: 1px 2px 2px 1px;
+    box-shadow: 1px 1px 3px rgba(0,0,0,.4);
+    border-top: 2px solid rgba(255,255,255,.28);
+    white-space: nowrap;
+  }
+  .spinemode .book { padding: 0; margin-right: 1px; }
+  .spinemode .fusen { width: 8px; right: 1px; }
+  .row-books {
+    display: flex; align-items: flex-end; overflow-x: auto;
+    min-height: 138px; padding: 4px 8px 0;
+    border-bottom: 9px solid #5d3d22;
+    scrollbar-width: thin;
+  }
+  .book { flex-shrink: 0; padding: 0 2px; cursor: pointer; touch-action: pan-x; }
+  .book img {
+    height: 116px; max-width: 86px; object-fit: contain;
+    box-shadow: 2px 2px 5px rgba(0,0,0,.45); border-radius: 2px;
+    display: block; background: #fff;
+  }
+  /* 表紙画像がない本: タイトル入りの生成表紙 */
+  .book .fakecover {
+    height: 116px; width: 82px; border-radius: 2px 4px 4px 2px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,.45);
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35);
+    padding: 9px 6px 7px 9px;
+    border-left: 4px solid rgba(0,0,0,.28);
+    display: flex; flex-direction: column;
+  }
+  .fakecover .fc-title {
+    flex: 1; font-size: 11px; font-weight: 700; line-height: 1.35;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+  .fakecover .fc-author {
+    font-size: 9.5px; opacity: .9; margin-top: 4px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .book.dim { opacity: .18; }
+  .book { position: relative; }
+  .book img, .book .fakecover { position: relative; z-index: 1; }
+  /* メモ付きの本に付箋: 上端から少しはみ出し、根元は表紙の裏に隠れる */
+  .fusen {
+    position: absolute; z-index: 0;
+    top: -9px; right: 7px;
+    width: 13px; height: 26px;
+    border-radius: 2px 2px 0 0;
+    box-shadow: 0 -1px 2px rgba(0,0,0,.25);
+    transform: rotate(3deg);
+  }
+  .sortable-ghost { opacity: .35; }
+
+  /* ---- リストビュー ---- */
+  #list { padding: 0 12px; display: grid; gap: 8px; }
+  .card {
+    background: #fff; border-radius: 10px; padding: 10px 12px;
+    display: flex; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: pointer;
+  }
+  .card .info { flex: 1; min-width: 0; }
+  .card .title { font-size: 15px; font-weight: 600; line-height: 1.35; }
+  .card .meta { font-size: 12.5px; color: #777; margin-top: 3px; line-height: 1.5; }
+  .empty { text-align: center; color: #999; padding: 50px 20px; font-size: 14px; }
+
+  /* ---- FAB ---- */
+  #fabs { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
+  #fabs button {
+    border: none; border-radius: 30px; padding: 15px 20px; font-size: 15px; font-weight: 600;
+    cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.3); color: #fff; white-space: nowrap;
+  }
+  #fabScan { background: #e94560; }
+  #fabText { background: #3a3a55; }
+  #fabPhoto { background: #2f6f4e; }
+
+  /* ---- モーダル共通 ---- */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; display: none; align-items: flex-end; justify-content: center; }
+  .overlay.open { display: flex; }
+  .sheet {
+    background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-width: 560px;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  }
+  .sheet h2 { font-size: 16px; margin-bottom: 14px; }
+  .sheet p.note { font-size: 12.5px; color: #888; margin: -6px 0 12px; line-height: 1.6; }
+  .sheet input, .sheet select, .sheet textarea { width: 100%; padding: 11px 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; font-family: inherit; }
+  .sheet textarea { resize: vertical; background: #fffbe6; border-color: #f0e0a0; }
+  .dimrow { display: flex; gap: 10px; }
+  .dimrow input { flex: 1; min-width: 0; }
+  .stars { display: flex; gap: 6px; font-size: 28px; margin-bottom: 10px; cursor: pointer; user-select: none; }
+  .stars span { color: #ddd; transition: color .1s; }
+  .stars span.on { color: #f5a623; }
+  .statusseg { display: flex; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+  .statusseg button { flex: 1; padding: 10px; border: none; background: #fff; font-size: 14px; cursor: pointer; }
+  .statusseg button + button { border-left: 1px solid #ddd; }
+  .statusseg button.active { background: #e94560; color: #fff; font-weight: 600; }
+  .stchip { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; color: #fff; vertical-align: 1px; }
+  .sheet .row2 { display: flex; gap: 10px; margin-top: 6px; }
+  .sheet .row2 button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  .btn-primary { background: #e94560; color: #fff; font-weight: 600; }
+  .btn-danger { background: #fce8ec; color: #c0234a; }
+  .btn-plain { background: #eee; }
+
+  #detailBody { display: flex; gap: 14px; margin-bottom: 14px; }
+  #detailBody img { width: 84px; height: 120px; object-fit: contain; background: #f0ede8; border-radius: 4px; }
+  #detailBody .t { font-size: 16px; font-weight: 700; line-height: 1.4; }
+  #detailBody .m { font-size: 13px; color: #777; margin-top: 6px; line-height: 1.7; }
+
+  /* ---- スキャナ ---- */
+  #scanner { position: fixed; inset: 0; background: #000; z-index: 120; display: none; flex-direction: column; }
+  #scanner.open { display: flex; }
+  #scanner video { flex: 1; object-fit: cover; width: 100%; min-height: 0; }
+  #scanner .guide {
+    position: absolute; top: 40%; left: 10%; right: 10%; height: 90px; transform: translateY(-50%);
+    border: 2px solid rgba(233,69,96,.9); border-radius: 8px; pointer-events: none;
+  }
+  #scanner .hint {
+    position: absolute; top: calc(40% + 60px); width: 100%; text-align: center;
+    color: #fff; font-size: 14px; text-shadow: 0 1px 3px #000; pointer-events: none;
+  }
+  #scanner .bar { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: #111; display: flex; gap: 10px; }
+  #scanner .bar input { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 16px; min-width: 0; }
+  #scanner .bar button { padding: 12px 16px; border-radius: 8px; border: none; font-size: 15px; background: #333; color: #fff; cursor: pointer; }
+  #scanner .bar button.primary { background: #e94560; }
+
+  #toast {
+    position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,20,30,.92); color: #fff; padding: 12px 20px;
+    border-radius: 10px; font-size: 14px; z-index: 300; max-width: 88%;
+    text-align: center; display: none;
+  }
+  #busyOverlay {
+    position: fixed; inset: 0; background: rgba(20,20,30,.75); z-index: 250;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-size: 15px; gap: 16px; text-align: center; padding: 20px;
+  }
+  #busyOverlay.open { display: flex; }
+  .spinner {
+    width: 40px; height: 40px; border: 4px solid rgba(255,255,255,.25);
+    border-top-color: #e94560; border-radius: 50%; animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📚 本棚</h1>
+  <span class="count" id="count"></span>
+  <div class="viewtoggle">
+    <button id="btnShelfView" class="active">棚</button>
+    <button id="btnListView">リスト</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input id="search" type="search" placeholder="タイトル・著者で検索">
+  <select id="statusFilter" style="display:none">
+    <option value="">すべて</option>
+    <option value="unread">未読</option>
+    <option value="reading">読書中</option>
+    <option value="read">読了</option>
+  </select>
+  <select id="sortSel" style="display:none">
+    <option value="added_desc">追加が新しい順</option>
+    <option value="rating_desc">評価が高い順</option>
+    <option value="added_asc">追加が古い順</option>
+    <option value="title">タイトル順</option>
+    <option value="author">著者順</option>
+    <option value="pubdate_desc">出版が新しい順</option>
+    <option value="pubdate_asc">出版が古い順</option>
+  </select>
+  <button id="spineToggle"></button>
+  <button id="addShelf">＋本棚</button>
+</div>
+
+<div id="shelves"></div>
+<div id="list" style="display:none"></div>
+
+<div id="fabs">
+  <button id="fabPhoto">📸 棚写真</button>
+  <button id="fabText">✏️</button>
+  <button id="fabScan">📷 スキャン</button>
+</div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+
+<div class="overlay" id="detailOverlay">
+  <div class="sheet">
+    <div id="detailBody"></div>
+    <div class="stars" id="detailRating"></div>
+    <div class="statusseg" id="detailStatus">
+      <button data-v="unread">未読</button><button data-v="reading">読書中</button><button data-v="read">読了</button>
+    </div>
+    <input id="detailTitle" placeholder="タイトル">
+    <input id="detailAuthor" placeholder="著者">
+    <div class="dimrow">
+      <input id="detailHeight" type="number" step="0.1" min="0" inputmode="decimal" placeholder="高さ cm">
+      <input id="detailThick" type="number" step="0.1" min="0" inputmode="decimal" placeholder="厚み cm">
+    </div>
+    <textarea id="detailMemo" placeholder="メモ（感想・貸出先・買った場所など）" rows="4"></textarea>
+    <div class="row2">
+      <button class="btn-primary" id="detailSave">保存</button>
+      <button class="btn-danger" id="detailDelete">削除</button>
+      <button class="btn-plain" id="detailClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="textOverlay">
+  <div class="sheet">
+    <h2>✏️ テキストで追加</h2>
+    <input id="txtTitle" placeholder="タイトル（必須）">
+    <input id="txtAuthor" placeholder="著者">
+    <select id="txtRow"></select>
+    <div class="row2">
+      <button class="btn-primary" id="txtAdd">追加</button>
+      <button class="btn-plain" id="txtCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="dimsOverlay">
+  <div class="sheet">
+    <h2>📐 段の内寸</h2>
+    <p class="note">実際の棚のこの段の内側サイズを cm で。高さは「本が入るか」の判定（超える本が赤枠）、幅は「残り何cm」の表示と背表紙モードの壁の位置に使います。空にすると未設定に戻ります。</p>
+    <div class="dimrow">
+      <input id="dimHeight" type="number" step="0.1" min="0" inputmode="decimal" placeholder="高さ cm">
+      <input id="dimWidth" type="number" step="0.1" min="0" inputmode="decimal" placeholder="幅 cm">
+    </div>
+    <div class="row2">
+      <button class="btn-primary" id="dimSave">保存</button>
+      <button class="btn-plain" id="dimCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="photoOverlay">
+  <div class="sheet">
+    <h2>📸 棚の写真から本棚を作る</h2>
+    <p class="note">家の本棚を正面から撮ると、段の構成と背表紙を読み取って、そのまま新しい本棚として登録します。明るい場所で、背表紙の文字が読める距離で撮ってください。</p>
+    <input id="photoName" placeholder="本棚の名前（省略可）">
+    <div class="row2">
+      <button class="btn-primary" id="photoTake">写真を選ぶ / 撮る</button>
+      <button class="btn-plain" id="photoCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div id="scanner">
+  <video id="video" autoplay muted playsinline></video>
+  <div class="guide"></div>
+  <div class="hint">本の裏のバーコード（978 で始まる方）を枠に合わせてください</div>
+  <div class="bar">
+    <input id="manualIsbn" type="text" inputmode="numeric" placeholder="ISBN手入力">
+    <button class="primary" id="manualAdd">追加</button>
+    <button id="closeScanner">閉じる</button>
+  </div>
+</div>
+
+<div id="busyOverlay"><div class="spinner"></div><div id="busyText">解析中…</div></div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let toastTimer;
+function toast(msg, ms = 3000) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.style.display = 'none'), ms);
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtPubdate(d) {
+  const s = String(d || '').replace(/-/g, '');
+  if (!s) return '';
+  return s.length >= 6 ? `${s.slice(0, 4)}/${s.slice(4, 6)}` : s;
+}
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res;
+}
+
+const SPINE_COLORS = ['#7a4a8f','#2f6f7e','#a03b3b','#3b6ba0','#7e6a2f','#4a8f5d','#8f4a6b','#565694','#946037','#37946a'];
+const FUSEN_COLORS = ['#ffd94d','#ff9eb5','#8fd6ff','#a8e6a1','#ffbe76'];
+
+// ---- 実寸 ----
+const PX_PER_CM = 6;
+function bookHpx(b) {
+  return b.height_cm ? Math.max(66, Math.min(156, Math.round(b.height_cm * PX_PER_CM))) : 112;
+}
+// 厚み (cm): 実測値があれば最優先。無ければページ数 × 紙厚 + 表紙で概算。不明なら 1.6cm
+function bookThicknessCm(b) {
+  if (b.thickness_cm) return b.thickness_cm;
+  return b.pages ? b.pages * 0.006 + 0.3 : 1.6;
+}
+function sizeLabel(h) {
+  if (!h) return '';
+  if (h <= 16) return '文庫';
+  if (h <= 18) return '新書';
+  if (h <= 20) return '四六判';
+  if (h <= 22) return 'A5';
+  if (h <= 27) return 'B5';
+  return '大型';
+}
+function spineColor(title) {
+  let h = 0;
+  for (const ch of String(title)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return SPINE_COLORS[h % SPINE_COLORS.length];
+}
+
+// ---- 状態 ----
+let shelves = []; // [{id, name, rows: [{id, name, books: [...]}]}]
+let view = localStorage.getItem('view') || 'shelf';
+let shelfMode = localStorage.getItem('shelfmode') || 'cover'; // cover | spine
+let detailBook = null;
+
+function allBooks() { return shelves.flatMap((s) => s.rows.flatMap((r) => r.books)); }
+function rowLabel(r, i) { return r.name || `${i + 1}段目`; }
+
+async function reload() {
+  shelves = await (await fetch('/api/shelves')).json();
+  render();
+}
+
+// ---- 描画 ----
+function matches(b, q) {
+  if (!q) return true;
+  return [b.title, b.author, b.publisher, b.isbn, b.memo].some((v) => (v || '').toLowerCase().includes(q));
+}
+
+function bookEl(b, rowInfo) {
+  const q = $('search').value.trim().toLowerCase();
+  const dim = matches(b, q) ? '' : ' dim';
+  const h = bookHpx(b);
+  let inner;
+  if (shelfMode === 'spine') {
+    const w = Math.max(10, Math.round(bookThicknessCm(b) * PX_PER_CM));
+    inner = `<div class="rspine" style="background:${spineColor(b.title)};height:${h}px;width:${w}px;font-size:${w >= 17 ? 10.5 : 9}px;line-height:${w}px">${esc(b.title)}</div>`;
+  } else if (b.cover) {
+    inner = `<img src="${esc(b.cover)}" loading="lazy" alt="" draggable="false" style="height:${h}px">`;
+  } else {
+    inner = `<div class="fakecover" style="background:${spineColor(b.title)};height:${h}px;width:${Math.round(h * 0.7)}px">
+         <div class="fc-title">${esc(b.title)}</div>
+         ${b.author ? `<div class="fc-author">${esc(b.author)}</div>` : ''}
+       </div>`;
+  }
+  const fusen = b.memo
+    ? `<div class="fusen" style="background:${FUSEN_COLORS[b.id % FUSEN_COLORS.length]}"></div>`
+    : '';
+  // 段の内寸(高さ)が設定されていて、本のほうが高い場合は警告
+  const toobig = rowInfo?.height_cm && b.height_cm && b.height_cm > rowInfo.height_cm ? ' toobig' : '';
+  return `<div class="book${dim}${toobig}" data-id="${b.id}">${fusen}${inner}</div>`;
+}
+
+// 背表紙モードで段幅が設定されていれば「棚の壁」を描き、はみ出す領域を赤く塗る
+function wallStyle(r) {
+  if (shelfMode !== 'spine' || !r.width_cm) return '';
+  const W = 8 + Math.round(r.width_cm * PX_PER_CM); // 8px は padding-left ぶん
+  return ` style="background-image:linear-gradient(to right, rgba(0,0,0,0) ${W + 5}px, rgba(190,30,30,.22) ${W + 5}px),linear-gradient(#40270f,#40270f);background-size:100% 100%,5px 100%;background-position:0 0,${W}px 0;background-repeat:no-repeat,no-repeat"`;
+}
+
+function renderShelves() {
+  const el = $('shelves');
+  el.innerHTML = shelves.map((s) => `
+    <div class="shelf" data-shelf="${s.id}">
+      <div class="shelf-head">
+        <span class="grip">☰</span>
+        <span class="name" title="タップで名前変更">${esc(s.name)}</span>
+        <span class="n">${s.rows.reduce((a, r) => a + r.books.length, 0)} 冊</span>
+        <button class="addrow">＋段</button>
+        <button class="delshelf">削除</button>
+      </div>
+      <div class="rows" data-shelf="${s.id}">
+        ${s.rows.map((r, i) => {
+          let fit = '';
+          if (r.width_cm) {
+            const used = r.books.reduce((a, b) => a + bookThicknessCm(b), 0);
+            const remain = r.width_cm - used;
+            fit = remain >= 0
+              ? `<span class="fit">残り ${remain.toFixed(0)}cm</span>`
+              : `<span class="fit over">${(-remain).toFixed(0)}cm オーバー</span>`;
+          }
+          const dims = r.height_cm || r.width_cm
+            ? `<span class="rdims">${r.height_cm ? `高${r.height_cm}` : ''}${r.height_cm && r.width_cm ? '×' : ''}${r.width_cm ? `幅${r.width_cm}` : ''}cm</span>`
+            : '';
+          return `
+        <div class="row" data-row="${r.id}">
+          <div class="row-head">
+            <span class="rgrip">⠿</span>
+            <span class="rname" title="タップで名前変更">${esc(rowLabel(r, i))}</span>
+            ${dims} ${fit}
+            <span style="flex:1"></span>
+            <button class="rowdims" title="内寸を設定">📐</button>
+            <button class="delrow">段を削除</button>
+          </div>
+          <div class="row-books${shelfMode === 'spine' ? ' spinemode' : ''}" data-row="${r.id}"${wallStyle(r)}>${r.books.map((b) => bookEl(b, r)).join('')}</div>
+        </div>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+
+  // 本のドラッグ (段・本棚をまたいで移動可)
+  el.querySelectorAll('.row-books').forEach((c) => {
+    new Sortable(c, {
+      group: 'books',
+      animation: 160,
+      delay: 180,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      onEnd: async (evt) => {
+        for (const cont of new Set([evt.from, evt.to])) {
+          const ids = [...cont.querySelectorAll('.book')].map((n) => Number(n.dataset.id));
+          await api('PUT', `/api/rows/${cont.dataset.row}/books`, { ids });
+        }
+        reload();
+      },
+    });
+  });
+
+  // 段の並べ替え (⠿ をドラッグ、同一本棚内)
+  el.querySelectorAll('.rows').forEach((c) => {
+    new Sortable(c, {
+      handle: '.rgrip',
+      animation: 160,
+      onEnd: async () => {
+        const ids = [...c.querySelectorAll('.row')].map((n) => Number(n.dataset.row));
+        await api('PUT', `/api/shelves/${c.dataset.shelf}/rows/order`, { ids });
+        reload();
+      },
+    });
+  });
+
+  // 本棚の並べ替え (☰ をドラッグ)
+  new Sortable(el, {
+    handle: '.grip',
+    animation: 160,
+    onEnd: async () => {
+      const ids = [...el.querySelectorAll('.shelf')].map((n) => Number(n.dataset.shelf));
+      await api('PUT', '/api/shelves/order', { ids });
+      reload();
+    },
+  });
+}
+
+const SORTS = {
+  rating_desc: (a, b) => (b.rating || 0) - (a.rating || 0) || (b.added_at || '').localeCompare(a.added_at || ''),
+  added_desc: (a, b) => (b.added_at || '').localeCompare(a.added_at || '') || b.id - a.id,
+  added_asc:  (a, b) => (a.added_at || '').localeCompare(b.added_at || '') || a.id - b.id,
+  title:      (a, b) => a.title.localeCompare(b.title, 'ja'),
+  author:     (a, b) => (a.author || '').localeCompare(b.author || '', 'ja'),
+  pubdate_desc: (a, b) => (b.pubdate || '').localeCompare(a.pubdate || ''),
+  pubdate_asc:  (a, b) => (a.pubdate || '0000').localeCompare(b.pubdate || '0000'),
+};
+
+function renderList() {
+  const q = $('search').value.trim().toLowerCase();
+  const place = {};
+  shelves.forEach((s) => s.rows.forEach((r, i) => r.books.forEach((b) => {
+    place[b.id] = `${s.name} / ${rowLabel(r, i)}`;
+  })));
+  const st = $('statusFilter').value;
+  const books = allBooks()
+    .filter((b) => matches(b, q) && (!st || (b.status || 'unread') === st))
+    .sort(SORTS[$('sortSel').value]);
+  const el = $('list');
+  if (!books.length) {
+    el.innerHTML = `<div class="empty">${q ? '該当する本がありません' : 'まだ本がありません'}</div>`;
+    return;
+  }
+  el.innerHTML = books.map((b) => `
+    <div class="card" data-id="${b.id}">
+      <div class="info">
+        <div class="title">${esc(b.title)}
+          <span class="stchip" style="background:${STATUS_COLOR[b.status] || STATUS_COLOR.unread}">${STATUS_LABEL[b.status] || '未読'}</span>
+          ${b.rating ? `<span style="color:#f5a623;font-size:13px"> ${'★'.repeat(b.rating)}</span>` : ''}
+        </div>
+        <div class="meta">
+          ${esc(b.author)}${b.author && b.publisher ? ' ／ ' : ''}${esc(b.publisher)}
+          ${b.pubdate ? `(${fmtPubdate(b.pubdate)})` : ''}<br>
+          📚 ${esc(place[b.id] || '')} ・ 登録 ${(b.added_at || '').slice(0, 10)}
+          ${b.memo ? `<br>📝 ${esc(b.memo.length > 60 ? b.memo.slice(0, 60) + '…' : b.memo)}` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function render() {
+  $('count').textContent = `${allBooks().length} 冊`;
+  const isShelf = view === 'shelf';
+  $('shelves').style.display = isShelf ? '' : 'none';
+  $('list').style.display = isShelf ? 'none' : '';
+  $('sortSel').style.display = isShelf ? 'none' : '';
+  $('statusFilter').style.display = isShelf ? 'none' : '';
+  $('addShelf').style.display = isShelf ? '' : 'none';
+  $('spineToggle').style.display = isShelf ? '' : 'none';
+  $('spineToggle').textContent = shelfMode === 'spine' ? '🖼 表紙' : '📚 背表紙';
+  $('btnShelfView').classList.toggle('active', isShelf);
+  $('btnListView').classList.toggle('active', !isShelf);
+  if (isShelf) renderShelves(); else renderList();
+}
+
+$('spineToggle').onclick = () => {
+  shelfMode = shelfMode === 'spine' ? 'cover' : 'spine';
+  localStorage.setItem('shelfmode', shelfMode);
+  render();
+};
+$('btnShelfView').onclick = () => { view = 'shelf'; localStorage.setItem('view', view); render(); };
+$('btnListView').onclick = () => { view = 'list'; localStorage.setItem('view', view); render(); };
+$('sortSel').onchange = renderList;
+$('statusFilter').onchange = renderList;
+
+let searchTimer;
+$('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(render, 200);
+});
+
+// ---- 本棚・段の操作 ----
+$('addShelf').onclick = async () => {
+  const name = prompt('新しい本棚の名前', `本棚 ${shelves.length + 1}`);
+  if (!name || !name.trim()) return;
+  const rows = Number(prompt('段数', '3')) || 1;
+  await api('POST', '/api/shelves', { name: name.trim(), rows });
+  reload();
+};
+
+$('shelves').addEventListener('click', async (e) => {
+  const shelfEl = e.target.closest('.shelf');
+  if (!shelfEl) return;
+  const shelfId = shelfEl.dataset.shelf;
+  const rowEl = e.target.closest('.row');
+
+  if (e.target.classList.contains('name')) {
+    const name = prompt('本棚の名前', e.target.textContent);
+    if (name && name.trim()) { await api('PATCH', `/api/shelves/${shelfId}`, { name: name.trim() }); reload(); }
+  } else if (e.target.classList.contains('delshelf')) {
+    const s = shelves.find((x) => x.id == shelfId);
+    const n = s.rows.reduce((a, r) => a + r.books.length, 0);
+    if (!confirm(`本棚「${s.name}」を削除しますか？\n（中の ${n} 冊は先頭の本棚に移動します）`)) return;
+    const res = await api('DELETE', `/api/shelves/${shelfId}`);
+    if (!res.ok) toast('⚠️ ' + ((await res.json()).error || '削除できません'));
+    reload();
+  } else if (e.target.classList.contains('addrow')) {
+    await api('POST', `/api/shelves/${shelfId}/rows`, {});
+    reload();
+  } else if (e.target.classList.contains('rowdims')) {
+    const r = shelves.find((x) => x.id == shelfId).rows.find((x) => x.id == Number(rowEl.dataset.row));
+    dimsRowId = r.id;
+    $('dimHeight').value = r.height_cm ?? '';
+    $('dimWidth').value = r.width_cm ?? '';
+    $('dimsOverlay').classList.add('open');
+  } else if (e.target.classList.contains('rname')) {
+    const name = prompt('段の名前（空で「n段目」表示に戻る）', e.target.textContent);
+    if (name === null) return;
+    await api('PATCH', `/api/rows/${rowEl.dataset.row}`, { name: name.trim() });
+    reload();
+  } else if (e.target.classList.contains('delrow')) {
+    if (!confirm('この段を削除しますか？（中の本は上の段に移動します）')) return;
+    const res = await api('DELETE', `/api/rows/${rowEl.dataset.row}`);
+    if (!res.ok) toast('⚠️ ' + ((await res.json()).error || '削除できません'));
+    reload();
+  } else {
+    const bookEl = e.target.closest('.book');
+    if (bookEl) openDetail(Number(bookEl.dataset.id));
+  }
+});
+
+$('list').addEventListener('click', (e) => {
+  const card = e.target.closest('.card');
+  if (card) openDetail(Number(card.dataset.id));
+});
+
+// ---- 詳細モーダル ----
+const STATUS_LABEL = { unread: '未読', reading: '読書中', read: '読了' };
+const STATUS_COLOR = { unread: '#9aa0a6', reading: '#3b6ba0', read: '#4a8f5d' };
+let detailRating = 0;
+let detailStatus = 'unread';
+
+function renderDetailStars() {
+  $('detailRating').innerHTML = [1, 2, 3, 4, 5]
+    .map((i) => `<span class="${i <= detailRating ? 'on' : ''}" data-v="${i}">★</span>`)
+    .join('');
+}
+function renderDetailStatus() {
+  $('detailStatus').querySelectorAll('button').forEach((btn) =>
+    btn.classList.toggle('active', btn.dataset.v === detailStatus));
+}
+$('detailRating').onclick = (e) => {
+  const v = Number(e.target.dataset.v);
+  if (!v) return;
+  detailRating = v === detailRating ? 0 : v; // 同じ星をもう一度タップで解除
+  renderDetailStars();
+};
+$('detailStatus').onclick = (e) => {
+  const v = e.target.dataset.v;
+  if (!v) return;
+  detailStatus = v;
+  renderDetailStatus();
+};
+
+function openDetail(id) {
+  detailBook = allBooks().find((b) => b.id === id);
+  if (!detailBook) return;
+  const b = detailBook;
+  detailRating = b.rating || 0;
+  detailStatus = b.status || 'unread';
+  renderDetailStars();
+  renderDetailStatus();
+  $('detailBody').innerHTML = `
+    ${b.cover
+      ? `<img src="${esc(b.cover)}">`
+      : `<div class="fakecover" style="background:${spineColor(b.title)};flex-shrink:0">
+           <div class="fc-title">${esc(b.title)}</div>
+           ${b.author ? `<div class="fc-author">${esc(b.author)}</div>` : ''}
+         </div>`}
+    <div>
+      <div class="t">${esc(b.title)}</div>
+      <div class="m">
+        ${esc(b.publisher)} ${b.pubdate ? `(${fmtPubdate(b.pubdate)})` : ''}<br>
+        ${b.isbn ? `ISBN ${b.isbn}<br>` : ''}
+        ${b.height_cm ? `${sizeLabel(b.height_cm)} 高さ${b.height_cm}cm` : ''}${b.pages ? ` ・ ${b.pages}ページ` : ''}${b.thickness_cm || b.pages ? ` ・ 厚み${b.thickness_cm ? '' : '約'}${bookThicknessCm(b).toFixed(1)}cm` : ''}${b.height_cm || b.pages ? '<br>' : ''}
+        登録 ${(b.added_at || '').slice(0, 10)}
+      </div>
+    </div>`;
+  $('detailTitle').value = b.title;
+  $('detailAuthor').value = b.author || '';
+  $('detailHeight').value = b.height_cm ?? '';
+  $('detailThick').value = b.thickness_cm ?? '';
+  $('detailThick').placeholder = b.pages ? `厚み cm (概算 ${(b.pages * 0.006 + 0.3).toFixed(1)})` : '厚み cm';
+  $('detailMemo').value = b.memo || '';
+  $('detailOverlay').classList.add('open');
+}
+$('detailSave').onclick = async () => {
+  if (!detailBook) return;
+  const title = $('detailTitle').value.trim();
+  if (!title) { toast('タイトルは空にできません'); return; }
+  const res = await api('PATCH', '/api/books/' + detailBook.id, {
+    title,
+    author: $('detailAuthor').value.trim(),
+    memo: $('detailMemo').value,
+    rating: detailRating,
+    status: detailStatus,
+    height_cm: $('detailHeight').value.trim(),
+    thickness_cm: $('detailThick').value.trim(),
+  });
+  if (res.ok) {
+    toast('💾 保存しました');
+    $('detailOverlay').classList.remove('open');
+    reload();
+  } else {
+    toast('⚠️ ' + ((await res.json()).error || '保存に失敗しました'));
+  }
+};
+$('detailClose').onclick = () => $('detailOverlay').classList.remove('open');
+$('detailOverlay').onclick = (e) => { if (e.target === $('detailOverlay')) $('detailOverlay').classList.remove('open'); };
+$('detailDelete').onclick = async () => {
+  if (!detailBook) return;
+  if (!confirm(`「${detailBook.title}」を削除しますか？`)) return;
+  await api('DELETE', '/api/books/' + detailBook.id);
+  $('detailOverlay').classList.remove('open');
+  reload();
+};
+
+// ---- 段の内寸モーダル ----
+let dimsRowId = null;
+$('dimCancel').onclick = () => $('dimsOverlay').classList.remove('open');
+$('dimsOverlay').onclick = (e) => { if (e.target === $('dimsOverlay')) $('dimsOverlay').classList.remove('open'); };
+$('dimSave').onclick = async () => {
+  if (!dimsRowId) return;
+  const val = (id) => { const v = $(id).value.trim(); return v === '' ? null : Number(v); };
+  await api('PATCH', `/api/rows/${dimsRowId}`, {
+    height_cm: val('dimHeight'),
+    width_cm: val('dimWidth'),
+  });
+  $('dimsOverlay').classList.remove('open');
+  toast('📐 内寸を保存しました');
+  reload();
+};
+
+// ---- テキストで追加 ----
+$('fabText').onclick = () => {
+  $('txtRow').innerHTML = shelves.map((s) =>
+    s.rows.map((r, i) => `<option value="${r.id}">${esc(s.name)} / ${esc(rowLabel(r, i))}</option>`).join('')
+  ).join('');
+  $('txtTitle').value = '';
+  $('txtAuthor').value = '';
+  $('textOverlay').classList.add('open');
+  $('txtTitle').focus();
+};
+$('txtCancel').onclick = () => $('textOverlay').classList.remove('open');
+$('textOverlay').onclick = (e) => { if (e.target === $('textOverlay')) $('textOverlay').classList.remove('open'); };
+$('txtAdd').onclick = async () => {
+  const title = $('txtTitle').value.trim();
+  if (!title) { toast('タイトルを入力してください'); return; }
+  const res = await api('POST', '/api/books', {
+    title,
+    author: $('txtAuthor').value.trim(),
+    row_id: Number($('txtRow').value),
+  });
+  if (res.status === 201) {
+    toast(`✅ 追加: ${title}`);
+    $('textOverlay').classList.remove('open');
+    reload();
+  } else {
+    toast('⚠️ ' + ((await res.json()).error || 'エラー'));
+  }
+};
+
+// ---- 棚写真の解析 ----
+$('fabPhoto').onclick = () => { $('photoName').value = ''; $('photoOverlay').classList.add('open'); };
+$('photoCancel').onclick = () => $('photoOverlay').classList.remove('open');
+$('photoOverlay').onclick = (e) => { if (e.target === $('photoOverlay')) $('photoOverlay').classList.remove('open'); };
+$('photoTake').onclick = () => $('photoInput').click();
+
+$('photoInput').onchange = async () => {
+  const file = $('photoInput').files[0];
+  $('photoInput').value = '';
+  if (!file) return;
+  $('photoOverlay').classList.remove('open');
+  $('busyText').textContent = '棚を解析中… (30秒〜数分かかることがあります)';
+  $('busyOverlay').classList.add('open');
+  try {
+    const dataUrl = await resizeImage(file, 2048);
+    const res = await api('POST', '/api/analyze-shelf', {
+      image: dataUrl,
+      name: $('photoName').value.trim(),
+    });
+    const data = await res.json();
+    if (res.status === 201) {
+      toast(`✅ 「${data.shelf.name}」を作成: ${data.rows} 段 / ${data.count} 冊`, 5000);
+      reload();
+    } else {
+      toast('⚠️ ' + (data.error || '解析に失敗しました'), 6000);
+    }
+  } catch (e) {
+    toast('⚠️ ' + e.message, 6000);
+  } finally {
+    $('busyOverlay').classList.remove('open');
+  }
+};
+
+function resizeImage(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error('画像を読み込めません'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ---- ISBN 登録 ----
+let busy = false;
+async function addByIsbn(isbn) {
+  if (busy) return;
+  busy = true;
+  try {
+    const res = await api('POST', '/api/books', { isbn });
+    const data = await res.json();
+    if (res.status === 201) {
+      toast(`✅ 追加: ${data.book.title}`);
+      if (navigator.vibrate) navigator.vibrate(80);
+    } else if (data.duplicate) {
+      toast(`📗 登録済み: ${data.book.title}`);
+    } else {
+      toast(`⚠️ ${data.error}（${isbn}）`);
+    }
+    reload();
+  } catch {
+    toast('⚠️ 通信エラー');
+  } finally {
+    setTimeout(() => (busy = false), 1500); // 同じ本の連続読み取りを抑止
+  }
+}
+
+// ---- バーコードスキャナ ----
+let stream = null;
+let scanLoop = null;
+let zxingReader = null;
+
+function isIsbnBarcode(code) {
+  return /^97[89]\d{10}$/.test(code);
+}
+
+async function openScanner() {
+  $('scanner').classList.add('open');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    $('video').srcObject = stream;
+  } catch (e) {
+    toast('⚠️ カメラを起動できません: ' + e.message + '。手入力を使ってください。', 5000);
+    return;
+  }
+
+  if ('BarcodeDetector' in window) {
+    const detector = new BarcodeDetector({ formats: ['ean_13'] });
+    scanLoop = setInterval(async () => {
+      const v = $('video');
+      if (v.readyState < 2) return;
+      try {
+        const codes = await detector.detect(v);
+        const hit = codes.find((c) => isIsbnBarcode(c.rawValue));
+        if (hit) addByIsbn(hit.rawValue);
+      } catch {}
+    }, 400);
+  } else {
+    // BarcodeDetector 非対応ブラウザ (iOS Safari など) は ZXing にフォールバック
+    try {
+      if (!window.ZXing) {
+        await new Promise((ok, ng) => {
+          const s = document.createElement('script');
+          s.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+          s.onload = ok; s.onerror = ng;
+          document.head.appendChild(s);
+        });
+      }
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      zxingReader.decodeFromStream(stream, $('video'), (result) => {
+        if (result && isIsbnBarcode(result.getText())) addByIsbn(result.getText());
+      });
+    } catch {
+      toast('⚠️ スキャナを初期化できません。手入力を使ってください。', 5000);
+    }
+  }
+}
+
+function closeScanner() {
+  $('scanner').classList.remove('open');
+  clearInterval(scanLoop);
+  scanLoop = null;
+  if (zxingReader) { zxingReader.reset(); zxingReader = null; }
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  $('video').srcObject = null;
+}
+
+$('fabScan').onclick = openScanner;
+$('closeScanner').onclick = closeScanner;
+$('manualAdd').onclick = () => {
+  const v = $('manualIsbn').value.trim();
+  if (v) { addByIsbn(v); $('manualIsbn').value = ''; }
+};
+$('manualIsbn').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('manualAdd').click();
+});
+
+reload();
+</script>
+</body>
+</html>

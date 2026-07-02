@@ -1,0 +1,10 @@
+node_modules/
+# 秘密鍵・証明書 (マシンごとに生成する)
+*.pem
+public/ca.crt
+# API キー
+.env
+# 蔵書データ
+books.db
+books.db-*
+ca.srl
