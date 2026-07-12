@@ -52,7 +52,7 @@ PC: https://localhost:8443
 
 自前 CA (`ca.pem`) で署名した証明書を使っている。CA を端末に登録すれば警告は出ない。
 
-- **Windows**: `certutil.exe -user -addstore Root C:\Users\jun\bookshelf-ca.crt` (登録済み)
+- **Windows**: `certutil.exe -user -addstore Root C:\Users\<ユーザー名>\bookshelf-ca.crt` (登録済み)
 - **Android**: スマホで `https://<WindowsのIP>:8443/ca.crt` をダウンロード →
   設定 → セキュリティ → 暗号化と認証情報 → 証明書のインストール → CA 証明書
 - 証明書の SAN: `localhost`, `127.0.0.1`, `192.168.11.8`。
@@ -63,7 +63,7 @@ PC: https://localhost:8443
 WSL 起動後に一度、**管理者 PowerShell** で:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File \\wsl$\Ubuntu\home\jun\bookshelf\setup-portproxy.ps1
+powershell -ExecutionPolicy Bypass -File \\wsl$\Ubuntu\home\<ユーザー名>\bookshelf\setup-portproxy.ps1
 ```
 
 その後スマホで `https://192.168.11.8:8443`。
